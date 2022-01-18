@@ -1,4 +1,4 @@
-# Green_Energy_Modelling
+# Green Energy Modelling
 A series of machine learning projects relating to forecasting energy consumption and green power.
 
 # Project #1: Energy use forecasting:
