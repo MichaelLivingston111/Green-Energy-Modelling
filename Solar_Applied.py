@@ -28,6 +28,12 @@ from keras.layers import Dense
 import tensorflow as tf
 from tensorflow.keras import datasets, layers, models
 
+from wwo_hist import retrieve_hist_data
+import pandas as pd
+pd.options.mode.chained_assignment = None  # default='warn'
+from datetime import datetime
+import numpy as np
+
 
 # Import the required dataset:
 data = pd.read_csv("Solar_Energy_Forecasting/Pasion et al dataset.csv")
@@ -44,28 +50,31 @@ df_updated = df.drop(['YRMODAHRMI', 'Location'], axis=1)
 
 
 # Define time bounds in data (hours outside this range are not expected to generate much power): "Power cycle"
-min_hour_of_interest = 10  # Min hour of interest
-max_hour_of_interest = 15  # Max hour of interest
+#min_hour_of_interest = 10  # Min hour of interest
+#max_hour_of_interest = 15  # Max hour of interest
 
 
 # One hot encode 'Season':
 df_updated = pd.get_dummies(df_updated, columns=['Season'], drop_first=True)  # Season
 
+# Encode the datetime:
+df_updated['Date_raw'] = pd.to_datetime(df_updated['Date']).astype(np.int64)
 
 # Calculate time since beginning of power cycle:
-df_updated['delta_hr'] = df_updated.Hour - min_hour_of_interest
+#df_updated['delta_hr'] = df_updated.Hour - min_hour_of_interest
 
 # Create cyclic hour features
-df_updated['sine_hr'] = np.sin((df_updated.delta_hr*np.pi/(max_hour_of_interest - min_hour_of_interest)))
-df_updated['cos_hr'] = np.cos((df_updated.delta_hr*np.pi/(max_hour_of_interest - min_hour_of_interest)))
+#df_updated['sine_hr'] = np.sin((df_updated.delta_hr*np.pi/(max_hour_of_interest - min_hour_of_interest)))
+#df_updated['cos_hr'] = np.cos((df_updated.delta_hr*np.pi/(max_hour_of_interest - min_hour_of_interest)))
 
 # Create cyclic month features
-df_updated['sine_mon'] = np.sin((df_updated.Month - 1)*np.pi/11)
-df_updated['cos_mon'] = np.cos((df_updated.Month - 1)*np.pi/11)
+#df_updated['sine_mon'] = np.sin((df_updated.Month - 1)*np.pi/11)
+#df_updated['cos_mon'] = np.cos((df_updated.Month - 1)*np.pi/11)
 
 
 # Now, we can drop month and hour from our dataframe, as well as other redundant variables:
-df_variables = df_updated.drop(['Hour', 'Month', 'delta_hr', 'Longitude', 'Pressure'], axis=1)
+#df_variables = df_updated.drop(['Hour', 'Month', 'delta_hr', 'Longitude', 'Pressure', 'Cloud.Ceiling', 'sine_hr', 'cos_hr', 'Time'], axis=1)
+df_variables = df_updated.drop(['Hour', 'Altitude', 'Cloud.Ceiling', 'Time', 'Date_raw', 'Date'], axis=1)
 
 # We only have latitude, time measurements, and a series of environmental variables now. These are the necessary
 # inputs for this project.
@@ -112,10 +121,16 @@ normalizer.adapt(np.array(df_variables))
 model = keras.Sequential([
     normalizer,
     layers.Dense(320, input_dim=x_train1.shape[1], activation='relu'),
-    layers.Dropout(0.1),
+    layers.Dropout(0.2),
     layers.Dense(280, activation='relu'),
-    layers.Dropout(0.1),
+    layers.Dropout(0.2),
     layers.Dense(240, activation='tanh'),
+    layers.Dropout(0.2),
+    layers.Dense(120, activation='tanh'),
+    layers.Dropout(0.2),
+    layers.Dense(60, activation='tanh'),
+    layers.Dropout(0.2),
+    layers.Dense(30, activation='tanh'),
     layers.Dense(1),
 ])
 
@@ -130,7 +145,7 @@ model.summary()
 
 
 # Train the model(s):
-num_epochs = 15
+num_epochs = 40
 batch_size = 4000
 
 history_1 = model.fit(x_train1, y_train1, epochs=num_epochs, validation_split=0.2)
@@ -179,4 +194,77 @@ zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 # Make the plot
 plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='jet')
 plt.show()
+
+# Now, we need to input new data from a variety of sources, clean and preprocess:
+
+# Specify parameters:
+frequency = 24
+start_date = '01-AUG-2021'
+end_date = '31-AUG-2021'
+api_key = 'bc45c0b9b5794e198c1210622220304'
+location_list = ['toronto', 'vancouver', 'houston', 'seattle', 'winnipeg']
+
+hist_weather_data = retrieve_hist_data(api_key,
+                                       location_list,
+                                       start_date,
+                                       end_date,
+                                       frequency,
+                                       location_label=True,
+                                       export_csv=True,
+                                       store_df=True)
+
+
+# Import the csv's created above as a data frame:
+Vancouver = pd.read_csv("vancouver.csv")
+Toronto = pd.read_csv("toronto.csv")
+Houston = pd.read_csv("houston.csv")
+
+# Design a function to perform data preprocessing to create a suitable dataset for the neural network:
+def ml_preprocess(data_csv, latitude, longitude):
+    # Select only the relevant data:
+    df = data_csv.iloc[:, [0, 17, 19, 20, 21, 23]]
+    df.columns = ["Date_raw", "Humidity", "Pressure", "AmbientTemp", "Visibility", "Wind.Speed"]
+
+    # Input the coordinates for each city:
+    df['Latitude'] = latitude
+    df['Longitude'] = longitude
+
+    # Date to datetime:
+    df["Date_raw"] = pd.to_datetime(df["Date_raw"])
+
+    # Create a month variable:
+    df['Month'] = df['Date_raw'].dt.month
+
+    # Date as an integer (i.e., 20210101)
+    df['Date'] = (df['Date_raw'].dt.year * 10000 +
+                  df['Date_raw'].dt.month * 100 +
+                  df['Date_raw'].dt.day * 1)
+
+    # Create season categories:
+    df['Season'] = pd.cut(df.Month, bins=[0, 2, 5, 8, 11, 12], labels=['Winter', 'Spring', 'Summer', 'Fall', 'Winter'],
+                          ordered=False)
+
+    # One hot encode season:
+    df_updated = pd.get_dummies(df, columns=['Season'], drop_first=True)
+
+    # Drop unnecessary variables:
+    df_variables = df_updated.drop(['Date_raw', 'Date'], axis=1)
+
+    # Reorder columns:
+    df_variables = df_variables[["Latitude", "Longitude", "Month", "Humidity", "AmbientTemp", "Wind.Speed",
+                                 "Visibility", "Pressure", "Season_Spring", "Season_Summer", "Season_Winter"]]
+
+    return df_variables
+
+
+# Apply the function and prepare all the data:
+Vancouver_processed = ml_preprocess(Vancouver, 49.2827, -123.1207)
+Vancouver_solar = model.predict(Vancouver_processed)
+
+Toronto_processed = ml_preprocess(Toronto, 43.6532, -70.3832)
+Toronto_solar = model.predict(Toronto_processed)
+
+Houston_processed = ml_preprocess(Houston, 29.7604, -95.3698)
+Houston_solar = model.predict(Houston_processed)
+
 
