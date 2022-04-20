@@ -1,102 +1,100 @@
-# Import:
+
+# SOLAR ENERGY FORECASTS ACROSS NORTH AMERICA
+
+
+# This project contains code that aims to accurately predict energy output (in Watts) in solar panels from a series
+# of associated variables (i.e., latitude, pressure, humidity etc.) using neural network algorithms. Most
+# importantly, it does not use solar irradiance as a predictor variable, due to the inconsistent and often inaccurate
+# reporting of solar irradiance. The main idea behind this project is to forecast solar energy potential using
+# commonly reported data across North America. Therefore, these models can be applied to a large amount of different
+# locations to estimate solar panel performance.
+
+
+# Import all required packages:
 import seaborn as sns
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import keras
+import tensorflow as tf
+import pandas as pd
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import cartopy.mpl.geoaxes
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.feature_selection import f_classif
-from sklearn.metrics import explained_variance_score, mean_absolute_error, mean_squared_error, mean_absolute_percentage_error, r2_score
-from sklearn import preprocessing
-from sklearn import metrics
-from sklearn.metrics import confusion_matrix, accuracy_score
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
-
-from matplotlib.colors import LinearSegmentedColormap
-import mpl_scatter_density  # adds projection='scatter_density'
+from sklearn.metrics import r2_score
 from scipy.stats import kde
-
-import keras
-from keras.models import Sequential
-from keras.layers import Dense
-
-import tensorflow as tf
 from tensorflow.keras import datasets, layers, models
-
 from wwo_hist import retrieve_hist_data
-import pandas as pd
+
 pd.options.mode.chained_assignment = None  # default='warn'
-from datetime import datetime
-import numpy as np
 
 
-# Import the required dataset:
+# Import the required dataset to train the neural network model:
 data = pd.read_csv("Solar_Energy_Forecasting/Pasion et al dataset.csv")
 
 
 # Our target variable is solar output, referred to here as 'PolyPwr'.
-# Pop off solar output:
-Solar_power = data.pop("PolyPwr")
+Solar_power = data.pop("PolyPwr")  # Isolate solar output as an independent variable
 df = data  # Rename
 
-# Now, we need to remove all the location specific data (i.e. specific region names). This is different from the
-# previous file -  we want to build a model that can be extrapolated into new regions.
+
+#######################################################################################################################
+
+#  DATA PREPROCESSING, INSPECTION, AND FEATURE SELECTION
+
+
+# Now, we need to remove all the location specific data (i.e. specific region names) -  we want to build a model that
+# can be extrapolated into new regions.
 df_updated = df.drop(['YRMODAHRMI', 'Location'], axis=1)
 
 
-# Define time bounds in data (hours outside this range are not expected to generate much power): "Power cycle"
-#min_hour_of_interest = 10  # Min hour of interest
-#max_hour_of_interest = 15  # Max hour of interest
+# Create cyclic month features:
+df_updated['sine_mon'] = np.sin((df_updated.Month - 1)*np.pi/11)
+df_updated['cos_mon'] = np.cos((df_updated.Month - 1)*np.pi/11)
 
 
 # One hot encode 'Season':
 df_updated = pd.get_dummies(df_updated, columns=['Season'], drop_first=True)  # Season
 
+
 # Encode the datetime:
 df_updated['Date_raw'] = pd.to_datetime(df_updated['Date']).astype(np.int64)
 
-# Calculate time since beginning of power cycle:
-#df_updated['delta_hr'] = df_updated.Hour - min_hour_of_interest
-
-# Create cyclic hour features
-#df_updated['sine_hr'] = np.sin((df_updated.delta_hr*np.pi/(max_hour_of_interest - min_hour_of_interest)))
-#df_updated['cos_hr'] = np.cos((df_updated.delta_hr*np.pi/(max_hour_of_interest - min_hour_of_interest)))
-
-# Create cyclic month features
-#df_updated['sine_mon'] = np.sin((df_updated.Month - 1)*np.pi/11)
-#df_updated['cos_mon'] = np.cos((df_updated.Month - 1)*np.pi/11)
-
 
 # Now, we can drop month and hour from our dataframe, as well as other redundant variables:
-#df_variables = df_updated.drop(['Hour', 'Month', 'delta_hr', 'Longitude', 'Pressure', 'Cloud.Ceiling', 'sine_hr', 'cos_hr', 'Time'], axis=1)
-df_variables = df_updated.drop(['Hour', 'Altitude', 'Cloud.Ceiling', 'Time', 'Date_raw', 'Date'], axis=1)
+df_variables = df_updated.drop(['Hour', 'Altitude', 'Cloud.Ceiling', 'Time', 'Date_raw', 'Date', 'Month'], axis=1)
+
 
 # We only have latitude, time measurements, and a series of environmental variables now. These are the necessary
 # inputs for this project.
 
-
-# Feature selection is the next important step. It will allow us to indetify the most influential variables in the
+# Feature selection is the next important step. It will allow us to identify the most influential variables in the
 # dataset, and eliminate any variables that are of limited importance and may reduce model accuracy.
 # Feature selection will be done using two Univariate selection:
+
 
 # Univariate Selection:
 X = df_variables
 Y = Solar_power
 
-# feature extraction
+
+# Feature extraction
 selector = SelectKBest(score_func=f_classif, k='all').fit(X, Y)
 scores = selector.scores_  # We now have a series of scores for each feature
+
 
 # Feature names:
 feature_names = list(X)
 
+
 # Order the variables by feature importance:
 feature_imp = pd.Series(scores, index=feature_names).sort_values(ascending=False)
+
 
 # Visualize feature importance:
 sns.barplot(x=feature_imp, y=feature_imp.index)
@@ -106,6 +104,9 @@ plt.title("Visualizing Important Features")
 plt.legend()
 plt.show()
 
+#######################################################################################################################
+
+# CREATING THE NEURAL NETWORK
 
 # Need to split the data into training and testing sets to build and test the model:
 x_train1, x_test1, y_train1, y_test1 = train_test_split(df_variables, Solar_power, test_size=0.2, random_state=0)
@@ -113,9 +114,9 @@ print("Train data has {} data points, test data has {} data points" .format(x_tr
 
 
 # CREATE THE NEURAL NETWORK:
-
 normalizer = tf.keras.layers.Normalization(axis=-1)
 normalizer.adapt(np.array(df_variables))
+
 
 # Model architecture:
 model = keras.Sequential([
@@ -134,30 +135,34 @@ model = keras.Sequential([
     layers.Dense(1),
 ])
 
-# Compile the model:
+
+# Model compilation:
 model.compile(
     optimizer=tf.optimizers.Adam(learning_rate=0.001),
     loss='mae',
     metrics=['mean_absolute_error']
 )
 model.build()
-model.summary()
+model.summary()  # Inspect
 
 
 # Train the model(s):
 num_epochs = 40
 batch_size = 4000
+history_1 = model.fit(x_train1, y_train1, epochs=num_epochs, validation_split=0.2)  # Fitting
 
-history_1 = model.fit(x_train1, y_train1, epochs=num_epochs, validation_split=0.2)
 
+#######################################################################################################################
 
-# Evaluate the model:
-loss1, mae1 = model.evaluate(x_test1, y_test1, verbose=2)
-print(mae1)
-
+# EVALUATE PERFORMANCE:
 
 # ASSESS THE PERFORMANCE OF THE ALGORITHM: Visualizing its accuracy and loss rate over each epoch will give us
 # insight into whether or not the model is over/under fitting the data:
+
+
+loss1, mae1 = model.evaluate(x_test1, y_test1, verbose=2)  # Calculate model mean absolute errors and losss rates
+print(mae1)
+
 
 # Summarize history for loss: Solar predictions
 plt.plot(history_1.history['loss'])
@@ -169,7 +174,7 @@ plt.legend(['train', 'test'], loc='upper left')
 plt.show()
 
 
-# Make the predictions:
+# DERIVE THE PREDICTIONS:
 Solar_predictions = model.predict(x_test1)
 
 
@@ -191,20 +196,25 @@ k = kde.gaussian_kde([y_test1, SP])
 xi, yi = np.mgrid[y_test1.min():y_test1.max():nbins * 1j, SP.min():SP.max():nbins * 1j]
 zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 
-# Make the plot
+
+# Visualize:
 plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='jet')
 plt.show()
 
-# Now, we need to input new data from a variety of sources, clean and preprocess:
 
-# Specify parameters:
+#######################################################################################################################
+
+# APPLICATION:
+
+# Input new data from a variety of sources, clean and preprocess:
+
 frequency = 24
 start_date = '01-AUG-2021'
 end_date = '31-AUG-2021'
 api_key = 'bc45c0b9b5794e198c1210622220304'
 location_list = ['toronto', 'vancouver', 'houston', 'seattle', 'winnipeg']
 
-hist_weather_data = retrieve_hist_data(api_key,
+hist_weather_data = retrieve_hist_data(api_key,  # This uses a specific function available on github
                                        location_list,
                                        start_date,
                                        end_date,
@@ -219,21 +229,23 @@ Vancouver = pd.read_csv("vancouver.csv")
 Toronto = pd.read_csv("toronto.csv")
 Houston = pd.read_csv("houston.csv")
 
+
 # Design a function to perform data preprocessing to create a suitable dataset for the neural network:
 def ml_preprocess(data_csv, latitude, longitude):
-    # Select only the relevant data:
-    df = data_csv.iloc[:, [0, 17, 19, 20, 21, 23]]
-    df.columns = ["Date_raw", "Humidity", "Pressure", "AmbientTemp", "Visibility", "Wind.Speed"]
 
-    # Input the coordinates for each city:
-    df['Latitude'] = latitude
-    df['Longitude'] = longitude
+    df = data_csv.iloc[:, [0, 17, 19, 20, 21, 23]]  # Select only the relevant columns
+    df.columns = ["Date_raw", "Humidity", "Pressure", "AmbientTemp", "Visibility", "Wind.Speed"]  # Rename columns
 
-    # Date to datetime:
-    df["Date_raw"] = pd.to_datetime(df["Date_raw"])
+    df['Latitude'] = latitude  # Input the latitude for each city
+    df['Longitude'] = longitude  # Input the longitude for each city
 
-    # Create a month variable:
-    df['Month'] = df['Date_raw'].dt.month
+    df["Date_raw"] = pd.to_datetime(df["Date_raw"])  # Date to datetime
+
+    df['Month'] = df['Date_raw'].dt.month  # Create a month variable
+
+    # Create cyclic month features
+    df['sine_mon'] = np.sin((df.Month - 1) * np.pi / 11)
+    df['cos_mon'] = np.cos((df.Month - 1) * np.pi / 11)
 
     # Date as an integer (i.e., 20210101)
     df['Date'] = (df['Date_raw'].dt.year * 10000 +
@@ -241,18 +253,20 @@ def ml_preprocess(data_csv, latitude, longitude):
                   df['Date_raw'].dt.day * 1)
 
     # Create season categories:
-    df['Season'] = pd.cut(df.Month, bins=[0, 2, 5, 8, 11, 12], labels=['Winter', 'Spring', 'Summer', 'Fall', 'Winter'],
+    df['Season'] = pd.cut(df.Month, bins=[0, 2, 5, 8, 11, 12],
+                          labels=['Winter', 'Spring', 'Summer', 'Fall', 'Winter'],
                           ordered=False)
 
     # One hot encode season:
     df_updated = pd.get_dummies(df, columns=['Season'], drop_first=True)
 
     # Drop unnecessary variables:
-    df_variables = df_updated.drop(['Date_raw', 'Date'], axis=1)
+    df_variables = df_updated.drop(['Date_raw', 'Date', 'Month'], axis=1)
 
     # Reorder columns:
-    df_variables = df_variables[["Latitude", "Longitude", "Month", "Humidity", "AmbientTemp", "Wind.Speed",
-                                 "Visibility", "Pressure", "Season_Spring", "Season_Summer", "Season_Winter"]]
+    df_variables = df_variables[["Latitude", "Longitude", "Humidity", "AmbientTemp", "Wind.Speed",
+                                 "Visibility", "Pressure", "sine_mon", "cos_mon", "Season_Spring",
+                                 "Season_Summer", "Season_Winter"]]
 
     return df_variables
 
@@ -266,5 +280,87 @@ Toronto_solar = model.predict(Toronto_processed)
 
 Houston_processed = ml_preprocess(Houston, 29.7604, -95.3698)
 Houston_solar = model.predict(Houston_processed)
+
+
+#######################################################################################################################
+
+
+# Create a function that creates a dataframe that averages total solar output (for the given time range) with lat and
+# lon for each city:
+
+
+def avg_location(solar_output, processed_data):
+
+    avg_solar_output = pd.DataFrame([np.average(solar_output)])  # Average solar power as a dataframe
+
+    cumulative_solar_output = pd.DataFrame([np.sum(solar_output)])  # Average solar power as a dataframe
+
+    lat = pd.DataFrame([np.max(processed_data.Latitude)])  # Latitude as a dataframe, using np.max to isolate one row
+    lon = pd.DataFrame([np.max(processed_data.Longitude)])  # Longitude as a dataframe, using np.max to isolate one row
+
+    dataframe = pd.concat([avg_solar_output, cumulative_solar_output, lat, lon], axis=1)  # Merge
+    dataframe.columns = ["Average_output", "Cumulative_output", "Latitude", "Longitude"]
+
+    return dataframe
+
+
+# Apply the average location function:
+Houston_df = avg_location(Houston_solar, Houston_processed)
+Toronto_df = avg_location(Toronto_solar, Toronto_processed)
+Vancouver_df = avg_location(Vancouver_solar, Vancouver_processed)
+
+
+# Merge the dataframes:
+x = pd.concat([Houston_df, Vancouver_df, Toronto_df], axis=0)
+
+
+#######################################################################################################################
+
+
+# Plot the average monthly solar power predictions on a map:
+
+# Set the max/min latitude/longitude boundaries of the map:
+min_lat = 25
+max_lat = 53
+min_lon = -127
+max_lon = -70
+
+
+# Average output figure:
+fig = plt.figure(figsize=(12, 6))
+ax1 = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree())
+plt.title('Average monthly solar power', loc='center')
+ax1.add_feature(cfeature.COASTLINE)
+ax1.add_feature(cartopy.feature.LAND, zorder=1, edgecolor='k', facecolor='white')
+ax1.add_feature(cfeature.BORDERS, zorder=2)
+# ax1.add_feature(cfeature.LAKES, zorder=2)
+ax1.set_extent([min_lon, max_lon, min_lat, max_lat],
+              crs=ccrs.PlateCarree())
+cb_sp = plt.scatter(x["Longitude"], x["Latitude"],
+                    c=x["Average_output"], s=x["Average_output"]*10,
+                    cmap='plasma', edgecolors='k', zorder=100)  # Create a colour bar
+fig.colorbar(cb_sp, ax=[ax1], fraction=0.023, pad=0.04, location='right')
+
+
+# Cumulative output figure:
+fig = plt.figure(figsize=(12, 6))
+ax1 = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree())
+plt.title('Cumulative monthly solar power', loc='center')
+ax1.add_feature(cfeature.COASTLINE)
+ax1.add_feature(cartopy.feature.LAND, zorder=1, edgecolor='k', facecolor='white')
+ax1.add_feature(cfeature.BORDERS, zorder=2)
+# ax1.add_feature(cfeature.LAKES, zorder=2)
+ax1.set_extent([min_lon, max_lon, min_lat, max_lat],
+              crs=ccrs.PlateCarree())
+cb_sp = plt.scatter(x["Longitude"], x["Latitude"],
+                    c=x["Cumulative_output"], s=x["Cumulative_output"],
+                    cmap='plasma', edgecolors='k', zorder=100)  # Create a colour bar
+fig.colorbar(cb_sp, ax=[ax1], fraction=0.023, pad=0.04, location='right')
+
+
+# Make a heat map calendar for solar output on each day of the year!
+
+# Need to make a function that caluclates day of the year for each solar output estimation/day and input into
+# dataframe for multiple locations.
 
 
