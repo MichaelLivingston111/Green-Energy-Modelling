@@ -209,10 +209,10 @@ plt.show()
 # Input new data from a variety of sources, clean and preprocess:
 
 frequency = 24
-start_date = '01-AUG-2021'
-end_date = '31-AUG-2021'
+start_date = '01-JAN-2021'
+end_date = '31-DEC-2021'
 api_key = 'bc45c0b9b5794e198c1210622220304'
-location_list = ['toronto', 'vancouver', 'houston', 'seattle', 'winnipeg']
+location_list = ['aberdeen', 'olympia', 'richland']
 
 hist_weather_data = retrieve_hist_data(api_key,  # This uses a specific function available on github
                                        location_list,
@@ -225,9 +225,19 @@ hist_weather_data = retrieve_hist_data(api_key,  # This uses a specific function
 
 
 # Import the csv's created above as a data frame:
+Salem = pd.read_csv("salem.csv")
+Portland = pd.read_csv("portland.csv")
+Yakima = pd.read_csv("yakima.csv")
+Tacoma = pd.read_csv("tacoma.csv")
+Seattle = pd.read_csv("seattle.csv")
+Victoria = pd.read_csv("victoria.csv")
 Vancouver = pd.read_csv("vancouver.csv")
-Toronto = pd.read_csv("toronto.csv")
-Houston = pd.read_csv("houston.csv")
+Nanaimo = pd.read_csv("nanaimo.csv")
+Kelowna = pd.read_csv("kelowna.csv")
+Kamloops = pd.read_csv("kamloops.csv")
+Aberdeen = pd.read_csv("aberdeen.csv")
+Olympia = pd.read_csv("olympia.csv")
+Richland = pd.read_csv("richland.csv")
 
 
 # Design a function to perform data preprocessing to create a suitable dataset for the neural network:
@@ -272,14 +282,41 @@ def ml_preprocess(data_csv, latitude, longitude):
 
 
 # Apply the function and prepare all the data:
+Salem_processed = ml_preprocess(Salem, 44.9429, -123.0351)
+Salem_solar = model.predict(Salem_processed)
+
+Portland_processed = ml_preprocess(Portland, 45.5152, -122.6784)
+Portland_solar = model.predict(Portland_processed)
+
+Yakima_processed = ml_preprocess(Yakima, 46.602070, -120.505898)
+Yakima_solar = model.predict(Yakima_processed)
+
+Tacoma_processed = ml_preprocess(Tacoma, 47.2529, -122.4443)
+Tacoma_solar = model.predict(Tacoma_processed)
+
+Seattle_processed = ml_preprocess(Seattle, 47.6062, -122.3321)
+Seattle_solar = model.predict(Seattle_processed)
+
+Victoria_processed = ml_preprocess(Victoria, 48.4284, -123.3656)
+Victoria_solar = model.predict(Victoria_processed)
+
 Vancouver_processed = ml_preprocess(Vancouver, 49.2827, -123.1207)
 Vancouver_solar = model.predict(Vancouver_processed)
 
-Toronto_processed = ml_preprocess(Toronto, 43.6532, -70.3832)
-Toronto_solar = model.predict(Toronto_processed)
+Nanaimo_processed = ml_preprocess(Nanaimo, 49.1659, -123.9401)
+Nanaimo_solar = model.predict(Nanaimo_processed)
 
-Houston_processed = ml_preprocess(Houston, 29.7604, -95.3698)
-Houston_solar = model.predict(Houston_processed)
+Kelowna_processed = ml_preprocess(Kelowna, 49.8880, -119.4960)
+Kelowna_solar = model.predict(Kelowna_processed)
+
+Kamloops_processed = ml_preprocess(Kamloops, 50.6745, -120.3273)
+Kamloops_solar = model.predict(Kamloops_processed)
+
+Olympia_processed = ml_preprocess(Olympia, 47.037872, -122.900696)
+Olympia_solar = model.predict(Olympia_processed)
+
+Richland_processed = ml_preprocess(Richland, 44.7690, -117.1685)
+Richland_solar = model.predict(Richland_processed)
 
 
 #######################################################################################################################
@@ -305,14 +342,23 @@ def avg_location(solar_output, processed_data):
 
 
 # Apply the average location function:
-Houston_df = avg_location(Houston_solar, Houston_processed)
-Toronto_df = avg_location(Toronto_solar, Toronto_processed)
+Salem_df = avg_location(Salem_solar, Salem_processed)
+Portland_df = avg_location(Portland_solar, Portland_processed)
+Yakima_df = avg_location(Yakima_solar, Yakima_processed)
+Tacoma_df = avg_location(Tacoma_solar, Tacoma_processed)
+Seattle_df = avg_location(Seattle_solar, Seattle_processed)
+Victoria_df = avg_location(Victoria_solar, Victoria_processed)
 Vancouver_df = avg_location(Vancouver_solar, Vancouver_processed)
+Nanaimo_df = avg_location(Nanaimo_solar, Nanaimo_processed)
+Kelowna_df = avg_location(Kelowna_solar, Kelowna_processed)
+Kamloops_df = avg_location(Kamloops_solar, Kamloops_processed)
+Olympia_df = avg_location(Olympia_solar, Kamloops_processed)
+Richland_df = avg_location(Richland_solar, Richland_processed)
 
 
 # Merge the dataframes:
-x = pd.concat([Houston_df, Vancouver_df, Toronto_df], axis=0)
-
+x = pd.concat([Salem_df, Portland_df, Yakima_df, Tacoma_df, Seattle_df, Victoria_df,
+               Vancouver_df, Nanaimo_df, Kelowna_df, Kamloops_df, Olympia_df, Richland_df], axis=0)
 
 #######################################################################################################################
 
@@ -320,16 +366,16 @@ x = pd.concat([Houston_df, Vancouver_df, Toronto_df], axis=0)
 # Plot the average monthly solar power predictions on a map:
 
 # Set the max/min latitude/longitude boundaries of the map:
-min_lat = 25
+min_lat = 43
 max_lat = 53
 min_lon = -127
-max_lon = -70
+max_lon = -118
 
 
 # Average output figure:
 fig = plt.figure(figsize=(12, 6))
 ax1 = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree())
-plt.title('Average monthly solar power', loc='center')
+plt.title('Average annual solar power', loc='center')
 ax1.add_feature(cfeature.COASTLINE)
 ax1.add_feature(cartopy.feature.LAND, zorder=1, edgecolor='k', facecolor='white')
 ax1.add_feature(cfeature.BORDERS, zorder=2)
@@ -345,7 +391,7 @@ fig.colorbar(cb_sp, ax=[ax1], fraction=0.023, pad=0.04, location='right')
 # Cumulative output figure:
 fig = plt.figure(figsize=(12, 6))
 ax1 = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree())
-plt.title('Cumulative monthly solar power', loc='center')
+plt.title('Cumulative annual solar power', loc='center')
 ax1.add_feature(cfeature.COASTLINE)
 ax1.add_feature(cartopy.feature.LAND, zorder=1, edgecolor='k', facecolor='white')
 ax1.add_feature(cfeature.BORDERS, zorder=2)
@@ -353,7 +399,7 @@ ax1.add_feature(cfeature.BORDERS, zorder=2)
 ax1.set_extent([min_lon, max_lon, min_lat, max_lat],
               crs=ccrs.PlateCarree())
 cb_sp = plt.scatter(x["Longitude"], x["Latitude"],
-                    c=x["Cumulative_output"], s=x["Cumulative_output"],
+                    c=x["Cumulative_output"], s=x["Cumulative_output"]/20,
                     cmap='plasma', edgecolors='k', zorder=100)  # Create a colour bar
 fig.colorbar(cb_sp, ax=[ax1], fraction=0.023, pad=0.04, location='right')
 
