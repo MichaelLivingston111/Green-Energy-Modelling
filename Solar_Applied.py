@@ -375,7 +375,7 @@ max_lon = -118
 # Average output figure:
 fig = plt.figure(figsize=(12, 6))
 ax1 = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree())
-plt.title('Average annual solar power', loc='center')
+plt.title('Average hourly solar power for 2021', loc='center')
 ax1.add_feature(cfeature.COASTLINE)
 ax1.add_feature(cartopy.feature.LAND, zorder=1, edgecolor='k', facecolor='white')
 ax1.add_feature(cfeature.BORDERS, zorder=2)
@@ -388,25 +388,27 @@ cb_sp = plt.scatter(x["Longitude"], x["Latitude"],
 fig.colorbar(cb_sp, ax=[ax1], fraction=0.023, pad=0.04, location='right')
 
 
-# Cumulative output figure:
-fig = plt.figure(figsize=(12, 6))
-ax1 = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree())
-plt.title('Cumulative annual solar power', loc='center')
-ax1.add_feature(cfeature.COASTLINE)
-ax1.add_feature(cartopy.feature.LAND, zorder=1, edgecolor='k', facecolor='white')
-ax1.add_feature(cfeature.BORDERS, zorder=2)
-# ax1.add_feature(cfeature.LAKES, zorder=2)
-ax1.set_extent([min_lon, max_lon, min_lat, max_lat],
-              crs=ccrs.PlateCarree())
-cb_sp = plt.scatter(x["Longitude"], x["Latitude"],
-                    c=x["Cumulative_output"], s=x["Cumulative_output"]/20,
-                    cmap='plasma', edgecolors='k', zorder=100)  # Create a colour bar
-fig.colorbar(cb_sp, ax=[ax1], fraction=0.023, pad=0.04, location='right')
-
-
 # Make a heat map calendar for solar output on each day of the year!
 
-# Need to make a function that caluclates day of the year for each solar output estimation/day and input into
+# Need to make a function that calculates day of the year for each solar output estimation/day and input into
 # dataframe for multiple locations.
 
+# Do it for each city - then combine all figures!
 
+fig = plt.figure(figsize=(14, 7))
+
+ax1 = fig.add_subplot(411)
+ax1 = sns.heatmap(Victoria_solar, vmin=0, vmax=20, cmap='viridis')
+ax1.title.set_text('Victoria')
+
+ax2 = fig.add_subplot(412)
+ax2 = sns.heatmap(Vancouver_solar, vmin=0, vmax=20, cmap='viridis')
+ax2.title.set_text('Vancouver')
+
+ax3 = fig.add_subplot(413)
+ax3 = sns.heatmap(Seattle_solar, vmin=0, vmax=20, cmap='viridis')
+ax3.title.set_text('Seattle')
+
+ax4 = fig.add_subplot(414)
+ax4 = sns.heatmap(Portland_solar, vmin=0, vmax=20, cmap='viridis')
+ax4.title.set_text('Portland')
