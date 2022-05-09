@@ -26,6 +26,8 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.feature_selection import f_classif
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error as mae
 from sklearn.metrics import r2_score
 from scipy.stats import kde
 from tensorflow.keras import datasets, layers, models
@@ -106,7 +108,9 @@ plt.show()
 
 #######################################################################################################################
 
-# CREATING THE NEURAL NETWORK
+# CREATE THE MODELS:
+
+# CREATING THE NEURAL NETWORK:
 
 # Need to split the data into training and testing sets to build and test the model:
 x_train1, x_test1, y_train1, y_test1 = train_test_split(df_variables, Solar_power, test_size=0.2, random_state=0)
@@ -146,11 +150,19 @@ model.build()
 model.summary()  # Inspect
 
 
-# Train the model(s):
+# Train the DNN:
 num_epochs = 40
 batch_size = 4000
 history_1 = model.fit(x_train1, y_train1, epochs=num_epochs, validation_split=0.2)  # Fitting
 
+
+# CREATING THE RANDOM FOREST:
+
+# Instantiate model with 1000 decision trees
+rf = RandomForestRegressor(n_estimators=1000, random_state=42)
+
+# Train the RF:
+rf.fit(x_train1, y_train1)
 
 #######################################################################################################################
 
@@ -159,12 +171,11 @@ history_1 = model.fit(x_train1, y_train1, epochs=num_epochs, validation_split=0.
 # ASSESS THE PERFORMANCE OF THE ALGORITHM: Visualizing its accuracy and loss rate over each epoch will give us
 # insight into whether or not the model is over/under fitting the data:
 
-
+# DNN:
 loss1, mae1 = model.evaluate(x_test1, y_test1, verbose=2)  # Calculate model mean absolute errors and losss rates
 print(mae1)
 
-
-# Summarize history for loss: Solar predictions
+# Summarize history for loss: (This is only applicable for the DNN)
 plt.plot(history_1.history['loss'])
 plt.plot(history_1.history['val_loss'])
 plt.title('model loss')
@@ -175,22 +186,39 @@ plt.show()
 
 
 # DERIVE THE PREDICTIONS:
-Solar_predictions = model.predict(x_test1)
+
+# DNN:
+Solar_predictions_DNN = model.predict(x_test1)
+
+# RF:
+Solar_predictions_RF = rf.predict(x_test1)
+
+# Evaluate the RF:
+RF_MAE = mae(y_test1, Solar_predictions_RF)
+DNN_MAE = mae(y_test1, Solar_predictions_DNN)
 
 
-# Plot the predictions:
-plt.scatter(y_test1, Solar_predictions, alpha=0.1, cmap='jet')
+# Plot the predictions for both models:
+
+fig = plt.figure(figsize=(12, 6))
+ax1 = plt.subplot(1, 2, 1)
+ax1.scatter(y_test1, Solar_predictions_DNN, alpha=0.1)
 lims = [0, 35]
+plt.xlim(lims)
+plt.ylim(lims)
+ax2 = plt.subplot(1, 2, 2)
+ax2.scatter(y_test1, Solar_predictions_RF, alpha=0.1)
 plt.xlim(lims)
 plt.ylim(lims)
 
 
 # R2 score
-r2_score(y_test1.ravel(), Solar_predictions)
+r2_score(y_test1.ravel(), Solar_predictions_DNN)
+r2_score(y_test1.ravel(), Solar_predictions_RF)
 
 
 # Evaluate a gaussian kde on a regular grid of nbins x nbins over data extents
-SP = Solar_predictions.reshape(-1)  # reshape for plotting
+SP = Solar_predictions_RF.reshape(-1)  # reshape for plotting
 nbins = 300
 k = kde.gaussian_kde([y_test1, SP])
 xi, yi = np.mgrid[y_test1.min():y_test1.max():nbins * 1j, SP.min():SP.max():nbins * 1j]
@@ -201,6 +229,7 @@ zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='jet')
 plt.show()
 
+# The Random forest algorithm yields the most accurate results on test data. Therefore we will use this model below.
 
 #######################################################################################################################
 
@@ -283,40 +312,40 @@ def ml_preprocess(data_csv, latitude, longitude):
 
 # Apply the function and prepare all the data:
 Salem_processed = ml_preprocess(Salem, 44.9429, -123.0351)
-Salem_solar = model.predict(Salem_processed)
+Salem_solar = np.reshape(rf.predict(Salem_processed), (-1, 1))
 
 Portland_processed = ml_preprocess(Portland, 45.5152, -122.6784)
-Portland_solar = model.predict(Portland_processed)
+Portland_solar = np.reshape(rf.predict(Portland_processed), (-1, 1))
 
 Yakima_processed = ml_preprocess(Yakima, 46.602070, -120.505898)
-Yakima_solar = model.predict(Yakima_processed)
+Yakima_solar = np.reshape(rf.predict(Yakima_processed), (-1, 1))
 
 Tacoma_processed = ml_preprocess(Tacoma, 47.2529, -122.4443)
-Tacoma_solar = model.predict(Tacoma_processed)
+Tacoma_solar = np.reshape(rf.predict(Tacoma_processed), (-1, 1))
 
 Seattle_processed = ml_preprocess(Seattle, 47.6062, -122.3321)
-Seattle_solar = model.predict(Seattle_processed)
+Seattle_solar = np.reshape(rf.predict(Seattle_processed), (-1, 1))
 
 Victoria_processed = ml_preprocess(Victoria, 48.4284, -123.3656)
-Victoria_solar = model.predict(Victoria_processed)
+Victoria_solar = np.reshape(rf.predict(Victoria_processed), (-1, 1))
 
 Vancouver_processed = ml_preprocess(Vancouver, 49.2827, -123.1207)
-Vancouver_solar = model.predict(Vancouver_processed)
+Vancouver_solar = np.reshape(rf.predict(Vancouver_processed), (-1, 1))
 
 Nanaimo_processed = ml_preprocess(Nanaimo, 49.1659, -123.9401)
-Nanaimo_solar = model.predict(Nanaimo_processed)
+Nanaimo_solar = np.reshape(rf.predict(Nanaimo_processed), (-1, 1))
 
 Kelowna_processed = ml_preprocess(Kelowna, 49.8880, -119.4960)
-Kelowna_solar = model.predict(Kelowna_processed)
+Kelowna_solar = np.reshape(rf.predict(Kelowna_processed), (-1, 1))
 
 Kamloops_processed = ml_preprocess(Kamloops, 50.6745, -120.3273)
-Kamloops_solar = model.predict(Kamloops_processed)
+Kamloops_solar = np.reshape(rf.predict(Kamloops_processed), (-1, 1))
 
 Olympia_processed = ml_preprocess(Olympia, 47.037872, -122.900696)
-Olympia_solar = model.predict(Olympia_processed)
+Olympia_solar = np.reshape(rf.predict(Olympia_processed), (-1, 1))
 
 Richland_processed = ml_preprocess(Richland, 44.7690, -117.1685)
-Richland_solar = model.predict(Richland_processed)
+Richland_solar = np.reshape(rf.predict(Richland_processed), (-1, 1))
 
 
 #######################################################################################################################
@@ -397,18 +426,42 @@ fig.colorbar(cb_sp, ax=[ax1], fraction=0.023, pad=0.04, location='right')
 
 fig = plt.figure(figsize=(14, 7))
 
-ax1 = fig.add_subplot(411)
-ax1 = sns.heatmap(Victoria_solar, vmin=0, vmax=20, cmap='viridis')
+ax1 = fig.add_subplot(421)
+ax1 = sns.heatmap(Victoria_solar, vmin=0, vmax=30, cmap='viridis')
 ax1.title.set_text('Victoria')
+ax1.set_axis_off()
 
-ax2 = fig.add_subplot(412)
-ax2 = sns.heatmap(Vancouver_solar, vmin=0, vmax=20, cmap='viridis')
+ax2 = fig.add_subplot(422)
+ax2 = sns.heatmap(Vancouver_solar, vmin=0, vmax=30, cmap='viridis')
 ax2.title.set_text('Vancouver')
+ax2.set_axis_off()
 
-ax3 = fig.add_subplot(413)
-ax3 = sns.heatmap(Seattle_solar, vmin=0, vmax=20, cmap='viridis')
+ax3 = fig.add_subplot(423)
+ax3 = sns.heatmap(Seattle_solar, vmin=0, vmax=30, cmap='viridis')
 ax3.title.set_text('Seattle')
+ax3.set_axis_off()
 
-ax4 = fig.add_subplot(414)
-ax4 = sns.heatmap(Portland_solar, vmin=0, vmax=20, cmap='viridis')
+ax4 = fig.add_subplot(424)
+ax4 = sns.heatmap(Portland_solar, vmin=0, vmax=30, cmap='viridis')
 ax4.title.set_text('Portland')
+ax4.set_axis_off()
+
+ax5 = fig.add_subplot(425)
+ax5 = sns.heatmap(Kamloops_solar, vmin=0, vmax=30, cmap='viridis')
+ax5.title.set_text('Kamloops')
+ax5.set_axis_off()
+
+ax6 = fig.add_subplot(426)
+ax6 = sns.heatmap(Kelowna_solar, vmin=0, vmax=30, cmap='viridis')
+ax6.title.set_text('Kelowna')
+ax6.set_axis_off()
+
+ax7 = fig.add_subplot(427)
+ax7 = sns.heatmap(Olympia_solar, vmin=0, vmax=30, cmap='viridis')
+ax7.title.set_text('Olympia')
+ax7.set_axis_off()
+
+ax8 = fig.add_subplot(428)
+ax8 = sns.heatmap(Salem_solar, vmin=0, vmax=30, cmap='viridis')
+ax8.title.set_text('Salem')
+ax8.set_axis_off()
