@@ -21,6 +21,8 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cartopy.mpl.geoaxes
 import matplotlib.pyplot as plt
+import mpl_scatter_density  # adds projection='scatter_density'
+from matplotlib.colors import LinearSegmentedColormap
 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import SelectKBest, chi2
@@ -77,7 +79,6 @@ def data_clean(input_csv):
 
 
 def feature_selection(features, target):
-
     # Feature extraction
     selector = SelectKBest(score_func=f_classif, k='all').fit(features, target)
     scores = selector.scores_  # We now have a series of scores for each feature
@@ -116,7 +117,6 @@ Solar_power = data_output[1]  # Target variable: Solar power
 # Visualize feature importance by applying the function:
 feature_selection(df_variables, Solar_power)
 
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 # CREATE THE MODELS:
@@ -127,85 +127,106 @@ feature_selection(df_variables, Solar_power)
 x_train1, x_test1, y_train1, y_test1 = train_test_split(df_variables, Solar_power, test_size=0.2, random_state=0)
 print("Train data has {} data points, test data has {} data points".format(x_train1.shape[0], x_test1.shape[0]))
 
-# CREATE THE NEURAL NETWORK:
-normalizer = tf.keras.layers.Normalization(axis=-1)
-normalizer.adapt(np.array(df_variables))
 
-# Model architecture:
-model = keras.Sequential([
-    normalizer,
-    layers.Dense(320, input_dim=x_train1.shape[1], activation='relu'),
-    layers.Dropout(0.2),
-    layers.Dense(280, activation='relu'),
-    layers.Dropout(0.2),
-    layers.Dense(240, activation='tanh'),
-    layers.Dropout(0.2),
-    layers.Dense(120, activation='tanh'),
-    layers.Dropout(0.2),
-    layers.Dense(60, activation='tanh'),
-    layers.Dropout(0.2),
-    layers.Dense(30, activation='tanh'),
-    layers.Dense(1),
-])
+# Build a function that creates a deep neural network, with the training sets as input:
 
-# Model compilation:
-model.compile(
-    optimizer=tf.optimizers.Adam(learning_rate=0.001),
-    loss='mae',
-    metrics=['mean_absolute_error']
-)
-model.build()
-model.summary()  # Inspect
 
-# Train the DNN:
-num_epochs = 40
-batch_size = 4000
-history_1 = model.fit(x_train1, y_train1, epochs=num_epochs, validation_split=0.2)  # Fitting
+def neural_network(xtrain, ytrain, xtest, ytest, variables, activation_fn1, activation_fn2, learning_rate, loss_metric,
+                   num_epochs, batch_size):
 
-# CREATING THE RANDOM FOREST:
+    # CREATE THE NEURAL NETWORK:
+    normalizer = tf.keras.layers.Normalization(axis=-1)
+    normalizer.adapt(np.array(variables))
 
-# Instantiate model with 1000 decision trees
-rf = RandomForestRegressor(n_estimators=1000, random_state=42)
+    # Model architecture:
+    model = keras.Sequential([
+        normalizer,
+        layers.Dense(320, input_dim=xtrain.shape[1], activation=activation_fn1),
+        layers.Dropout(0.2),
+        layers.Dense(280, activation=activation_fn1),
+        layers.Dropout(0.2),
+        layers.Dense(240, activation=activation_fn2),
+        layers.Dropout(0.2),
+        layers.Dense(120, activation=activation_fn2),
+        layers.Dropout(0.2),
+        layers.Dense(60, activation=activation_fn2),
+        layers.Dropout(0.2),
+        layers.Dense(30, activation=activation_fn2),
+        layers.Dense(1),
+    ])
 
-# Train the RF:
-rf.fit(x_train1, y_train1)
+    # Model compilation:
+    model.compile(
+        optimizer=tf.optimizers.Adam(learning_rate=learning_rate),
+        loss=loss_metric,
+        metrics=['mean_absolute_error']
+    )
 
-#######################################################################################################################
+    model.build()
 
-# EVALUATE PERFORMANCE:
+    # Train the DNN:
+    num_epochs = num_epochs
+    batch_size = batch_size
+    history_1 = model.fit(xtrain, ytrain, epochs=num_epochs, validation_split=0.2)  # Fitting
+
+    loss1, mae1 = model.evaluate(xtest, ytest, verbose=2)  # Calculate model mean absolute errors and loss rates
+
+    return model, history_1
+
+
+# Build a function that creates a deep Random Forest Algorithm, with the training sets as input:
+
+
+def random_forest(xtrain, ytrain, n_estimators, random_state):
+
+    # Instantiate model with x# of decision trees
+    rf = RandomForestRegressor(n_estimators=n_estimators, random_state=random_state)
+
+    rf.fit(xtrain, ytrain)  # Train the RF
+
+    return(rf)
+
+
+# Apply the DNN function:
+DNN_output = neural_network(x_train1, y_train1, x_test1, y_test1, df_variables, 'relu', 'tanh', 0.001, 'mae', 40, 4000)
 
 # ASSESS THE PERFORMANCE OF THE ALGORITHM: Visualizing its accuracy and loss rate over each epoch will give us
 # insight into whether or not the model is over/under fitting the data:
-
-# DNN:
-loss1, mae1 = model.evaluate(x_test1, y_test1, verbose=2)  # Calculate model mean absolute errors and losss rates
-print(mae1)
+DNN_model = DNN_output[0]  # Specify the DNN model
+History = DNN_output[1]  # Specify the loss history
 
 # Summarize history for loss: (This is only applicable for the DNN)
-plt.plot(history_1.history['loss'])
-plt.plot(history_1.history['val_loss'])
+plt.plot(History.history['loss'])
+plt.plot(History.history['val_loss'])
 plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
 plt.legend(['train', 'test'], loc='upper left')
 plt.show()
 
+
+# Apply the RF function:
+RF_model = random_forest(x_train1, y_train1, 1000, 42)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 # DERIVE THE PREDICTIONS:
 
 # DNN:
-Solar_predictions_DNN = model.predict(x_test1)
+Solar_predictions_DNN = DNN_model.predict(x_test1)
 
 # RF:
-Solar_predictions_RF = rf.predict(x_test1)
+Solar_predictions_RF = RF_model.predict(x_test1)
 
-# Evaluate the RF:
+# Evaluate the model accuracy:
 RF_MAE = mae(y_test1, Solar_predictions_RF)
 DNN_MAE = mae(y_test1, Solar_predictions_DNN)
 
 # Plot the predictions for both models:
 fig = plt.figure(figsize=(12, 6))
 ax1 = plt.subplot(1, 2, 1)
-ax1.scatter(y_test1, Solar_predictions_DNN, alpha=0.1)
+ax1.scatter(y_test1, Solar_predictions_DNN, c=z, alpha=0.1)
 lims = [0, 35]
 plt.xlim(lims)
 plt.ylim(lims)
@@ -218,7 +239,8 @@ plt.ylim(lims)
 r2_score(y_test1.ravel(), Solar_predictions_DNN)
 r2_score(y_test1.ravel(), Solar_predictions_RF)
 
-# Model comparisons and evaluations indicate that the Random Forest algorithm is superior to the Deep Neural Network!
+
+# Model comparisons and evaluations indicate that the Random Forest algorithm is the most accurate!
 
 
 # Evaluate a gaussian kde on a regular grid of nbins x nbins over data extents
@@ -231,6 +253,44 @@ zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 # Visualize:
 plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='jet')
 plt.show()
+
+y_plot = Solar_predictions_RF.reshape(-1)
+
+
+def cross_val_density_plot(fig, x, y):
+
+
+
+
+
+    ax = fig.add_subplot(1, 1, 1, projection='scatter_density')
+    density = ax.scatter_density(x, y, cmap=white_viridis)
+    fig.colorbar(density, label='Number of points per pixel')
+
+
+fig = plt.figure()
+using_mpl_scatter_density(fig, y_test1, Solar_predictions_RF)
+plt.show()
+
+# Calculate the point density
+xy = np.vstack([y_test1, SP])
+z = kde.gaussian_kde(xy)(xy)
+
+fig = plt.figure(figsize=(12, 6))
+ax1 = plt.subplot(1, 2, 1)
+ax1.scatter(y_test1, Solar_predictions_DNN, c=z, alpha=0.1)
+ax1.set_title("Deep Neural Network")
+ax1.set_ylabel("Predicted output")
+ax1.set_xlabel("Measured output")
+lims = [0, 35]
+plt.xlim(lims)
+plt.ylim(lims)
+ax2 = plt.subplot(1, 2, 2)
+ax2.scatter(y_test1, Solar_predictions_RF, c=z, alpha=0.1)
+ax2.set_title("Random Forest")
+ax2.set_xlabel("Measured output")
+plt.xlim(lims)
+plt.ylim(lims)
 
 # The Random forest algorithm yields the most accurate results on test data. Therefore we will use this model below.
 
